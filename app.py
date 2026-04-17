@@ -91,41 +91,60 @@ def build_graph(data, system_name, color_scheme):
     dot = graphviz.Digraph(engine='dot')
     dot.attr(rankdir='LR', size='8,5')
     
-    # 核心疾病节点 (增加防崩容错)
-    disease_node = data.get("disease", "未知疾病")
+    # 终极防御 1：防止 data 本身解析失败变成 None
+    if not isinstance(data, dict):
+        return dot
+        
+    disease_node = str(data.get("disease", "未知疾病"))
     dot.node(disease_node, disease_node, shape='ellipse', style='filled', color=color_scheme['disease'])
     
-    # 添加症状节点及关系 (确保它是列表)
-    for sym in data.get("symptoms", []):
-        dot.node(sym, sym, shape='box', style='filled', color=color_scheme['symptom'])
-        dot.edge(disease_node, sym, label="具有症状")
-        
-    # 添加药物、疗效及对应关系 (核心修复区)
-    for treat in data.get("treatments", []):
-        # 1. 检查大模型输出的是不是标准的字典
-        if isinstance(treat, dict):
-            drug = treat.get("drug", "未知药物")
-            effect = treat.get("effect", "未知疗效")
-            targets = treat.get("target", "").split(", ")
-        # 2. 如果大模型偷懒只输出了一个字符串（药名）
-        elif isinstance(treat, str):
-            drug = treat
-            effect = "未提取出疗效"
-            targets = []
-        # 3. 遇到其他乱七八糟的格式，直接跳过
-        else:
-            continue
+    # 终极防御 2：确保 symptoms 是个列表
+    symptoms = data.get("symptoms", [])
+    if isinstance(symptoms, list):
+        for sym in symptoms:
+            sym_str = str(sym)
+            dot.node(sym_str, sym_str, shape='box', style='filled', color=color_scheme['symptom'])
+            dot.edge(disease_node, sym_str, label="具有症状")
+    else:
+        symptoms = []
             
-        dot.node(drug, drug, shape='hexagon', style='filled', color=color_scheme['drug'])
-        dot.node(effect, effect, shape='parallelogram', style='filled', color=color_scheme['effect'])
-        
-        dot.edge(drug, disease_node, label="治疗")
-        dot.edge(drug, effect, label="具有疗效")
-        
-        for target in targets:
-            if target and target in data.get("symptoms", []):
-                dot.edge(drug, target, label="缓解/针对")
+    # 终极防御 3：处理 treatments 里的各种花式错乱格式
+    treatments = data.get("treatments", [])
+    if isinstance(treatments, list):
+        for treat in treatments:
+            if isinstance(treat, dict):
+                drug = str(treat.get("drug", "未知药物"))
+                effect = str(treat.get("effect", "未知疗效"))
                 
+                # 核心修复区：处理 target 是 null、列表、或字符串的情况
+                raw_target = treat.get("target")
+                if isinstance(raw_target, str):
+                    # 如果是字符串，按逗号拆分并去掉空格
+                    targets = [t.strip() for t in raw_target.split(",") if t.strip()]
+                elif isinstance(raw_target, list):
+                    # 如果大模型直接输出了列表，直接转成字符串列表
+                    targets = [str(t) for t in raw_target]
+                else:
+                    # 如果是 null 或者其他乱七八糟的东西，设为空列表
+                    targets = []
+                    
+            elif isinstance(treat, str):
+                drug = treat
+                effect = "未提取出疗效"
+                targets = []
+            else:
+                continue
+                
+            dot.node(drug, drug, shape='hexagon', style='filled', color=color_scheme['drug'])
+            dot.node(effect, effect, shape='parallelogram', style='filled', color=color_scheme['effect'])
+            
+            dot.edge(drug, disease_node, label="治疗")
+            dot.edge(drug, effect, label="具有疗效")
+            
+            for target in targets:
+                if target and target in symptoms:
+                    dot.edge(drug, target, label="缓解/针对")
+                    
     return dot
 
 def auto_align_symptoms(western_syms, tcm_syms):

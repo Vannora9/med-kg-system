@@ -88,22 +88,34 @@ def extract_kg_from_text(text, system_type):
         return None
 
 def build_graph(data, system_name, color_scheme):
-    # 修复：增加了正确的缩进
     dot = graphviz.Digraph(engine='dot')
     dot.attr(rankdir='LR', size='8,5')
     
-    disease_node = data["disease"]
+    # 核心疾病节点 (增加防崩容错)
+    disease_node = data.get("disease", "未知疾病")
     dot.node(disease_node, disease_node, shape='ellipse', style='filled', color=color_scheme['disease'])
     
-    for sym in data["symptoms"]:
+    # 添加症状节点及关系 (确保它是列表)
+    for sym in data.get("symptoms", []):
         dot.node(sym, sym, shape='box', style='filled', color=color_scheme['symptom'])
         dot.edge(disease_node, sym, label="具有症状")
         
-    for treat in data["treatments"]:
-        drug = treat["drug"]
-        effect = treat["effect"]
-        targets = treat.get("target", "").split(", ") # 防止 target 不存在报错
-        
+    # 添加药物、疗效及对应关系 (核心修复区)
+    for treat in data.get("treatments", []):
+        # 1. 检查大模型输出的是不是标准的字典
+        if isinstance(treat, dict):
+            drug = treat.get("drug", "未知药物")
+            effect = treat.get("effect", "未知疗效")
+            targets = treat.get("target", "").split(", ")
+        # 2. 如果大模型偷懒只输出了一个字符串（药名）
+        elif isinstance(treat, str):
+            drug = treat
+            effect = "未提取出疗效"
+            targets = []
+        # 3. 遇到其他乱七八糟的格式，直接跳过
+        else:
+            continue
+            
         dot.node(drug, drug, shape='hexagon', style='filled', color=color_scheme['drug'])
         dot.node(effect, effect, shape='parallelogram', style='filled', color=color_scheme['effect'])
         
@@ -111,8 +123,9 @@ def build_graph(data, system_name, color_scheme):
         dot.edge(drug, effect, label="具有疗效")
         
         for target in targets:
-            if target in data["symptoms"]:
+            if target and target in data.get("symptoms", []):
                 dot.edge(drug, target, label="缓解/针对")
+                
     return dot
 
 def auto_align_symptoms(western_syms, tcm_syms):

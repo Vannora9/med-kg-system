@@ -5,6 +5,88 @@ import graphviz
 st.set_page_config(page_title="中西医知识图谱对比系统", layout="wide")
 
 # ==========================================
+# 0. 扩展的模拟数据库 (包含感冒和偏头痛)
+# ==========================================
+# 为了实现联想，我们需要一个包含多个疾病的字典
+db = {
+    "感冒": {
+        "w_data": data_western, 
+        "t_data": data_tcm,
+        # 建立一个综合症状索引用于搜索
+        "search_index": set(data_western["symptoms"] + data_tcm["symptoms"]) 
+    },
+    "偏头痛": {
+        "w_data": {
+            "disease": "偏头痛 (Migraine)",
+            "symptoms": ["头痛", "恶心", "畏光", "搏动性疼痛"],
+            "treatments": [{"drug": "布洛芬", "effect": "镇痛", "target": "头痛"}, {"drug": "曲普坦类", "effect": "收缩血管", "target": "搏动性疼痛"}]
+        },
+        "t_data": {
+            "disease": "偏头痛 (肝阳上亢)",
+            "symptoms": ["头痛", "眩晕", "心烦易怒", "脉弦"],
+            "treatments": [{"drug": "天麻钩藤饮", "effect": "平肝潜阳", "target": "头痛, 眩晕, 心烦易怒"}]
+        },
+        "search_index": set(["头痛", "恶心", "畏光", "搏动性疼痛", "眩晕", "心烦易怒", "脉弦"])
+    }
+}
+
+# 提取全局所有不重复的症状，用于下拉提示
+all_symptoms = set()
+for d_info in db.values():
+    all_symptoms.update(d_info["search_index"])
+
+# ==========================================
+# UI 交互：双模式搜索
+# ==========================================
+st.title("🌿 中西医诊疗知识图谱对比系统")
+
+# 使用选项卡区分“直接查病”和“按症寻病”
+tab1, tab2 = st.tabs(["🩺 按疾病查询", "🔍 按症状联想 (智能推演)"])
+
+with tab1:
+    disease_query = st.selectbox("请选择或输入疾病名称:", ["感冒", "偏头痛"])
+    # 这里直接复用你之前的图谱渲染逻辑
+    # if disease_query == "感冒": 
+    #    ... (之前的双图谱展示代码)
+
+with tab2:
+    st.write("请选择患者出现的症状（可多选），系统将自动推演可能的疾病图谱。")
+    # 提供支持自动联想的多选框
+    selected_symptoms = st.multiselect("输入或选择症状:", list(all_symptoms))
+    
+    if selected_symptoms:
+        # 匹配算法：计算交集
+        match_results = []
+        user_sym_set = set(selected_symptoms)
+        
+        for disease_name, info in db.items():
+            overlap = user_sym_set.intersection(info["search_index"])
+            if overlap:
+                match_results.append({
+                    "disease": disease_name,
+                    "score": len(overlap), # 匹配到的症状数量
+                    "matched_syms": list(overlap)
+                })
+        
+        # 按匹配度从高到低排序
+        match_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        if match_results:
+            st.markdown("### 💡 系统推演结果")
+            for res in match_results:
+                # 动态生成按钮，用户点击后可以展开对应疾病的图谱
+                with st.expander(f"📌 {res['disease']} (匹配度: {res['score']} 项 - {', '.join(res['matched_syms'])})"):
+                    st.write(f"👉 发现 {res['disease']} 与您输入的症状高度相关。")
+                    
+                    # 在这里调用图谱渲染函数 (复用你之前的 build_graph)
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.graphviz_chart(build_graph(db[res['disease']]['w_data'], "西医", color_w))
+                    with col_b:
+                        st.graphviz_chart(build_graph(db[res['disease']]['t_data'], "中医", color_t))
+        else:
+            st.warning("暂未找到包含这些症状的疾病图谱，请尝试其他描述。")
+# ==========================================
 # 1. 模拟 LLM 信息抽取后的结构化数据
 # （实际应用中，这里的数据由 LLM 提示词自动从文献解析为 JSON）
 # ==========================================

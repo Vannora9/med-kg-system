@@ -5,6 +5,72 @@ import graphviz
 st.set_page_config(page_title="中西医知识图谱对比系统", layout="wide")
 
 # ==========================================
+# 1. 模拟 LLM 信息抽取后的结构化数据
+# （实际应用中，这里的数据由 LLM 提示词自动从文献解析为 JSON）
+# ==========================================
+data_western = {
+    "disease": "感冒 (Common Cold)",
+    "symptoms": ["发热", "头痛", "流涕", "咽痛"],
+    "treatments": [
+        {"drug": "布洛芬 (Ibuprofen)", "effect": "退热镇痛", "target": "发热, 头痛"},
+        {"drug": "伪麻黄碱", "effect": "缓解鼻塞", "target": "流涕"}
+    ]
+}
+
+data_tcm = {
+    "disease": "感冒 (风寒表证)",
+    "symptoms": ["恶寒重发热轻", "头痛无汗", "鼻塞流清涕", "脉浮紧"],
+    "treatments": [
+        {"drug": "荆防败毒散", "effect": "辛温解表，疏风散寒", "target": "恶寒重发热轻, 头痛无汗"},
+        {"drug": "麻黄汤", "effect": "发汗解表，宣肺平喘", "target": "头痛无汗"}
+    ]
+}
+
+# ==========================================
+# 2. 构建知识图谱 (NetworkX -> Graphviz)
+# ==========================================
+def build_graph(data, system_name, color_scheme):
+    dot = graphviz.Digraph(engine='dot')
+    dot.attr(rankdir='LR', size='8,5')
+    
+    # 核心疾病节点
+    disease_node = data["disease"]
+    dot.node(disease_node, disease_node, shape='ellipse', style='filled', color=color_scheme['disease'])
+    
+    # 添加症状节点及关系
+    for sym in data["symptoms"]:
+        dot.node(sym, sym, shape='box', style='filled', color=color_scheme['symptom'])
+        dot.edge(disease_node, sym, label="具有症状")
+        
+    # 添加药物、疗效及对应关系
+    for treat in data["treatments"]:
+        drug = treat["drug"]
+        effect = treat["effect"]
+        targets = treat["target"].split(", ")
+        
+        dot.node(drug, drug, shape='hexagon', style='filled', color=color_scheme['drug'])
+        dot.node(effect, effect, shape='parallelogram', style='filled', color=color_scheme['effect'])
+        
+        dot.edge(drug, disease_node, label="治疗")
+        dot.edge(drug, effect, label="具有疗效")
+        
+        for target in targets:
+            if target in data["symptoms"]:
+                dot.edge(drug, target, label="缓解/针对")
+                
+    return dot
+
+# 配色方案
+color_w = {'disease': '#FF9999', 'symptom': '#FFCC99', 'drug': '#99CCFF', 'effect': '#CCFFCC'}
+color_t = {'disease': '#FF9999', 'symptom': '#FFCC99', 'drug': '#DDA0DD', 'effect': '#CCFFCC'}
+
+# ==========================================
+# 3. 前端界面与对比逻辑
+# ==========================================
+st.title("🌿 中西医诊疗知识图谱对比系统 (MVP)")
+st.write("输入常见疾病，对比中西医在症状认知与用药治疗上的差异。")
+
+# ==========================================
 # 0. 扩展的模拟数据库 (包含感冒和偏头痛)
 # ==========================================
 # 为了实现联想，我们需要一个包含多个疾病的字典
@@ -86,73 +152,6 @@ with tab2:
                         st.graphviz_chart(build_graph(db[res['disease']]['t_data'], "中医", color_t))
         else:
             st.warning("暂未找到包含这些症状的疾病图谱，请尝试其他描述。")
-# ==========================================
-# 1. 模拟 LLM 信息抽取后的结构化数据
-# （实际应用中，这里的数据由 LLM 提示词自动从文献解析为 JSON）
-# ==========================================
-data_western = {
-    "disease": "感冒 (Common Cold)",
-    "symptoms": ["发热", "头痛", "流涕", "咽痛"],
-    "treatments": [
-        {"drug": "布洛芬 (Ibuprofen)", "effect": "退热镇痛", "target": "发热, 头痛"},
-        {"drug": "伪麻黄碱", "effect": "缓解鼻塞", "target": "流涕"}
-    ]
-}
-
-data_tcm = {
-    "disease": "感冒 (风寒表证)",
-    "symptoms": ["恶寒重发热轻", "头痛无汗", "鼻塞流清涕", "脉浮紧"],
-    "treatments": [
-        {"drug": "荆防败毒散", "effect": "辛温解表，疏风散寒", "target": "恶寒重发热轻, 头痛无汗"},
-        {"drug": "麻黄汤", "effect": "发汗解表，宣肺平喘", "target": "头痛无汗"}
-    ]
-}
-
-# ==========================================
-# 2. 构建知识图谱 (NetworkX -> Graphviz)
-# ==========================================
-def build_graph(data, system_name, color_scheme):
-    dot = graphviz.Digraph(engine='dot')
-    dot.attr(rankdir='LR', size='8,5')
-    
-    # 核心疾病节点
-    disease_node = data["disease"]
-    dot.node(disease_node, disease_node, shape='ellipse', style='filled', color=color_scheme['disease'])
-    
-    # 添加症状节点及关系
-    for sym in data["symptoms"]:
-        dot.node(sym, sym, shape='box', style='filled', color=color_scheme['symptom'])
-        dot.edge(disease_node, sym, label="具有症状")
-        
-    # 添加药物、疗效及对应关系
-    for treat in data["treatments"]:
-        drug = treat["drug"]
-        effect = treat["effect"]
-        targets = treat["target"].split(", ")
-        
-        dot.node(drug, drug, shape='hexagon', style='filled', color=color_scheme['drug'])
-        dot.node(effect, effect, shape='parallelogram', style='filled', color=color_scheme['effect'])
-        
-        dot.edge(drug, disease_node, label="治疗")
-        dot.edge(drug, effect, label="具有疗效")
-        
-        for target in targets:
-            if target in data["symptoms"]:
-                dot.edge(drug, target, label="缓解/针对")
-                
-    return dot
-
-# 配色方案
-color_w = {'disease': '#FF9999', 'symptom': '#FFCC99', 'drug': '#99CCFF', 'effect': '#CCFFCC'}
-color_t = {'disease': '#FF9999', 'symptom': '#FFCC99', 'drug': '#DDA0DD', 'effect': '#CCFFCC'}
-
-# ==========================================
-# 3. 前端界面与对比逻辑
-# ==========================================
-st.title("🌿 中西医诊疗知识图谱对比系统 (MVP)")
-st.write("输入常见疾病，对比中西医在症状认知与用药治疗上的差异。")
-
-disease_query = st.text_input("请输入疾病名称查询 (例如: 感冒)", "感冒")
 
 if disease_query == "感冒":
     col1, col2 = st.columns(2)
@@ -171,82 +170,20 @@ if disease_query == "感冒":
         
     st.divider()
     
-    # ==========================================
-    # 4. 自动知识融合与实体对齐引擎
-    # ==========================================
-    st.subheader("🤖 自动化实体对齐与对比分析")
+    # 对比分析引擎 (模拟)
+    st.subheader("🔍 智能对比分析")
     
-    import difflib
-
-    # 1. 模拟一个微型的医学本体字典 (Ontology Mapping)
-    # 在实际应用中，这里可以替换为 LLM 实时判断或知识库查询
-    medical_ontology = {
-        "发热": ["发热轻", "发热重", "恶寒重发热轻", "壮热"],
-        "流涕": ["流清涕", "鼻塞流清涕", "流浊涕"],
-        "鼻塞": ["鼻塞流清涕"]
-    }
-
-    def calculate_similarity(s1, s2):
-        """计算两个字符串的字面相似度"""
-        return difflib.SequenceMatcher(None, s1, s2).ratio()
-
-    def auto_align_symptoms(western_syms, tcm_syms):
-        exact_matches = []
-        ontology_matches = []
-        fuzzy_matches = []
-        unmatched_w = list(western_syms)
-        unmatched_t = list(tcm_syms)
-
-        # A. 绝对对齐 (Exact Match)
-        for w in western_syms:
-            if w in unmatched_t:
-                exact_matches.append(w)
-                unmatched_w.remove(w)
-                unmatched_t.remove(w)
-
-        # B. 本体字典对齐 (Ontology Mapping)
-        for w in list(unmatched_w):
-            if w in medical_ontology:
-                for t in list(unmatched_t):
-                    if t in medical_ontology[w]:
-                        ontology_matches.append((w, t))
-                        unmatched_w.remove(w)
-                        unmatched_t.remove(t)
-                        break # 假设一对一映射，找到即跳出
-
-        # C. 模糊/语义对齐 (Fuzzy Match - 相似度阈值设为 0.4)
-        for w in list(unmatched_w):
-            for t in list(unmatched_t):
-                if calculate_similarity(w, t) > 0.4:
-                    fuzzy_matches.append((w, t, round(calculate_similarity(w, t), 2)))
-                    unmatched_w.remove(w)
-                    unmatched_t.remove(t)
-                    break
-
-        return exact_matches, ontology_matches, fuzzy_matches, unmatched_w, unmatched_t
-
-    # 运行自动对齐算法
-    exact, ontology, fuzzy, unique_w, unique_t = auto_align_symptoms(data_western["symptoms"], data_tcm["symptoms"])
-
-    # 动态渲染分析结果
-    col_res1, col_res2 = st.columns(2)
+    # 模拟简单的求交集/差集逻辑
+    western_sym = set(data_western["symptoms"])
+    tcm_sym = set(data_tcm["symptoms"])
     
-    with col_res1:
-        st.markdown("#### 🔗 症状对齐结果 (Entity Alignment)")
-        if exact:
-            st.success(f"**绝对匹配:** {', '.join(exact)}")
-        if ontology:
-            for w, t in ontology:
-                st.info(f"**本体映射:** [{w}] ↔ [{t}]")
-        if fuzzy:
-            for w, t, score in fuzzy:
-                st.warning(f"**模糊匹配:** [{w}] ≈ [{t}] (相似度: {score})")
-                
-    with col_res2:
-        st.markdown("#### ⚠️ 特异性症状 (Unmatched Entities)")
-        st.write("**西医独有:**", ", ".join(unique_w) if unique_w else "无")
-        st.write("**中医独有:**", ", ".join(unique_t) if unique_t else "无")
+    st.markdown("#### 1. 症状认知对比")
+    st.write("- **相似点:** 两者都关注到了体温异常（发热 vs 恶寒发热）、头部不适（头痛）和呼吸道症状（流涕）。")
+    st.write("- **差异点:** 中医图谱额外引入了体征观察（**脉浮紧**）以及对冷热的主观感受细分（**恶寒重发热轻**），而西医图谱更倾向于客观症状的平铺。")
+    
+    st.markdown("#### 2. 治疗策略对比")
+    st.write("- **西医用药:** 呈现明显的 **多对一** 靶向特征，布洛芬直击发热和头痛，伪麻黄碱直击流涕。")
+    st.write("- **中医用药:** 呈现 **系统性** 特征，荆防败毒散同时作用于多个症状（恶寒、发热、头痛），其疗效（辛温解表）是针对疾病的病机（风寒），而非单一症状。")
 
-    # 动态生成治疗逻辑总结
-    st.markdown("#### 💡 自动策略推导")
-    st.write(f"在 {disease_query} 的治疗中，西医倾向于针对靶点（如：**{', '.join([t['target'] for t in data_western['treatments']])}**）进行直接干预。而中医不仅关注重叠症状，还处理了其特有表征（如：**{', '.join(unique_t)}**），采用的药物通常具有更复合的疗效（如：**{', '.join([t['effect'] for t in data_tcm['treatments']])}**）。")
+else:
+    st.info("目前MVP版本仅录入了「感冒」的数据，请尝试输入「感冒」。")
